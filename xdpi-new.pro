@@ -27,16 +27,23 @@ CONFIG += c++11
 SOURCES += \
         main.cpp \
         mainwindow.cpp \
-    dpi.cpp
+    dpi.cpp \
+    ndpi_util.c \
+    xdpi.c
+
 
 HEADERS += \
         mainwindow.h \
-    dpi.h
+    dpi.h \
+    ndpi_util.h \
+    xdpi.h \
 
 FORMS += \
         mainwindow.ui
 
-LIBS += -L/usr/local/lib -lpcap
+INCLUDEPATH += /usr/local/include/ndpi
+
+LIBS += -L/usr/local/lib -lpcap -lndpi
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin

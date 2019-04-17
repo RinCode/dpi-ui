@@ -35,7 +35,5 @@ void MainWindow::on_stopCapture_clicked()
 {
     count = 0;
     xdpi->stopCapture();
-    xdpi->quit();
-    xdpi->wait();
-    free(xdpi);
+    ui->device->setText("/home/rin/Downloads/1.pcap");
 }

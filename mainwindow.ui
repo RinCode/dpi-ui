@@ -19,16 +19,19 @@
      <rect>
       <x>30</x>
       <y>10</y>
-      <width>113</width>
-      <height>23</height>
+      <width>221</width>
+      <height>21</height>
      </rect>
+    </property>
+    <property name="text">
+     <string>/home/rin/Downloads/1.pcap</string>
     </property>
    </widget>
    <widget class="QPushButton" name="startCapture">
     <property name="geometry">
      <rect>
-      <x>160</x>
-      <y>10</y>
+      <x>40</x>
+      <y>50</y>
       <width>80</width>
       <height>23</height>
      </rect>
@@ -40,8 +43,8 @@
    <widget class="QPushButton" name="stopCapture">
     <property name="geometry">
      <rect>
-      <x>260</x>
-      <y>10</y>
+      <x>130</x>
+      <y>50</y>
       <width>80</width>
       <height>23</height>
      </rect>

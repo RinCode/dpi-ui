@@ -7,6 +7,7 @@
 #include <QDebug>
 #include <QThread>
 #include "mainwindow.h"
+#include "xdpi.h"
 
 class dpi : public QThread
 {

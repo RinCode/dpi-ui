@@ -14,14 +14,19 @@ class dpi : public QThread
     Q_OBJECT
 
 signals:
-    void get_packet();
+    void status_bar(QString status);
+    void get_flow(struct ndpi_flow_info *flow);
+    void packet_count(long count);
 
 public slots:
-    void get_slot();
+    void show_status_bar(QString status);
+    void show_get_flow(struct ndpi_flow_info *flow);
+    void show_packet_count(long count);
 
 private:
     MainWindow *m_gui;
     pcap_t * handler;
+    void extractFlow(struct result *result);
 
 public:
     dpi(QString dev,MainWindow *gui);

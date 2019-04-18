@@ -1,16 +1,4 @@
 #include "xdpi.h"
-#include <inttypes.h>
-#include <getopt.h>
-#include <stdio.h>
-#include "string.h"
-#include <stdlib.h>
-#include <time.h>
-#include <signal.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include "ndpi_api.h"
-#include "ndpi_util.h"
 
 int nDPI_LogLevel = 0;
 char *_debug_protocols = NULL;
@@ -39,33 +27,18 @@ struct flow_info {
 
 struct ndpi_workflow *workflow;
 
-static void pcap_callback(u_char *user, const struct pcap_pkthdr *h, const u_char *bytes);
-
 static void on_protocol_discovered(struct ndpi_workflow *workflow, struct ndpi_flow_info *flow, void *udata);
 
 static struct reader_thread reader;
 static u_int8_t undetected_flows_deleted = 0;
-static int print_statistics = 0;
-static char *dev = NULL;
-static char *logging_path = NULL;
 
-static int num_flows = 0;
 static int all_num_flows = 0;
 static struct flow_info *all_flows;
 
 static struct timeval pcap_start = {0, 0}, pcap_end = {0, 0}, program_start = {0, 0};
-static struct timeval startup_time, begin, end;
-static u_int32_t pcap_analysis_duration = (u_int32_t) - 1;
-static u_int32_t pcap_stop_duration = (u_int32_t) - 1;
 
 static pcap_t *handler = NULL;
-static char *bpfFilter = NULL;
-static int dump = 0;
-static pcap_dumper_t *extcap_dumper = NULL;
-static char *extcap_capture_file = NULL;
-static char extcap_buf[16384];
-static u_int16_t master_protocol = (u_int16_t) - 1;
-static u_int16_t app_protocol = (u_int16_t) - 1;
+
 struct ndpi_packet_trailer {
     u_int32_t magic; /* 0x19682017 */
     u_int16_t master_protocol /* e.g. HTTP */, app_protocol /* e.g. FaceBook */;
@@ -166,71 +139,96 @@ void initDetect(pcap_t *handle) {
            sizeof(reader.workflow->stats.protocol_flows));
 }
 
-static void printFlow(struct ndpi_flow_info *flow, int idle) {
-    char out[1000];
-    int j = 0;
-    j = snprintf(out, sizeof(out), "%"PRIu64",%d,", flow->last_seen, idle);
-
-    if (flow->vlan_id > 0) {
-        j += snprintf(out + j, sizeof(out), "%u,", flow->vlan_id);
-    } else {
-        j += snprintf(out + j, sizeof(out), "-1,");
-    }
-    if (flow->detected_protocol.master_protocol) {
+static void printFlow(struct ndpi_flow_info *flow, struct result *res) {
+    struct result *tmp;
+    tmp = (struct result*)malloc(sizeof(struct result));
+    tmp->flow = (struct ndpi_flow_info*)malloc(sizeof(struct ndpi_flow_info));
+    tmp->flow->protocol = flow->protocol;
+    tmp->flow->src_port = flow->src_port;
+    tmp->flow->dst_port = flow->dst_port;
+    strcpy(tmp->flow->src_name,flow->src_name);
+    strcpy(tmp->flow->dst_name,flow->dst_name);
+    if(flow->detected_protocol.master_protocol){
         char buf[64];
-        j += snprintf(out + j, sizeof(out), "%u,%u,%s,", flow->detected_protocol.master_protocol,
-                      flow->detected_protocol.app_protocol,
-                      ndpi_protocol2name(reader.workflow->ndpi_struct, flow->detected_protocol, buf, sizeof(buf)));
-    } else
-        j += snprintf(out + j, sizeof(out), "-1,%u,%s,", flow->detected_protocol.app_protocol,
-                      ndpi_get_proto_name(reader.workflow->ndpi_struct, flow->detected_protocol.app_protocol));
+        strcpy(tmp->flow->protocol_name,ndpi_protocol2name(reader.workflow->ndpi_struct, flow->detected_protocol, buf, sizeof(buf)));
+    }else{
+        strcpy(tmp->flow->protocol_name,ndpi_get_proto_name(reader.workflow->ndpi_struct, flow->detected_protocol.app_protocol));
+    }
+    tmp->next = res->next;
+    res->next = tmp;
 
-    j += snprintf(out + j, sizeof(out), "%s,%u,%s,%u,%u,%u,%llu,%llu,%u,%llu,", flow->src_name, htons(flow->src_port),
-                  flow->dst_name,
-                  htons(flow->dst_port),
-                  flow->src2dst_packets, flow->dst2src_packets, flow->src2dst_bytes, flow->dst2src_bytes,
-                  flow->src2dst_packets + flow->dst2src_packets, flow->src2dst_bytes + flow->dst2src_bytes);
+//    struct ndpi_flow_info *flow = reader.idle_flows[--reader.num_idle_flows];
+//    struct result *tmp;
+//    tmp = (struct result*)malloc(sizeof(struct result));
+//    tmp->flow->protocol = flow->protocol;
+//    tmp->flow->src_port = flow->src_port;
+//    tmp->flow->dst_port = flow->dst_port;
+//    strcpy(tmp->flow->src_name,flow->src_name);
+//    strcpy(tmp->flow->dst_name,flow->dst_name);
+//    tmp->next = result->next;
+//    fprintf(stdout,"%s:%u,%s,%u\n",tmp->flow->src_name,htons(tmp->flow->src_port),tmp->flow->dst_name,htons(tmp->flow->dst_port));
+//    result->next = tmp;
+//    char out[1000];
+//    struct result tmp;
+//    int j = 0;
+//    j = snprintf(out, sizeof(out), "%"PRIu64",%d,", flow->last_seen, 0);
 
-    if (flow->host_server_name[0] != '\0') {
-        j += snprintf(out + j, sizeof(out), "%s,", flow->host_server_name);
-    } else {
-        j += snprintf(out + j, sizeof(out), ",");
-    }
-    if (flow->info[0] != '\0') {
-        j += snprintf(out + j, sizeof(out), "%s,", flow->info);
-    } else {
-        j += snprintf(out + j, sizeof(out), ",");
-    }
+//    if (flow->vlan_id > 0) {
+//        j += snprintf(out + j, sizeof(out), "%u,", flow->vlan_id);
+//    } else {
+//        j += snprintf(out + j, sizeof(out), "-1,");
+//    }
+//    if (flow->detected_protocol.master_protocol) {
+//        char buf[64];
+//        j += snprintf(out + j, sizeof(out), "%u,%u,%s,", flow->detected_protocol.master_protocol,
+//                      flow->detected_protocol.app_protocol,
+//                      ndpi_protocol2name(reader.workflow->ndpi_struct, flow->detected_protocol, buf, sizeof(buf)));
+//    } else
+//        j += snprintf(out + j, sizeof(out), "-1,%u,%s,", flow->detected_protocol.app_protocol,
+//                      ndpi_get_proto_name(reader.workflow->ndpi_struct, flow->detected_protocol.app_protocol));
 
-    if (flow->ssh_ssl.client_info[0] != '\0') {
-        j += snprintf(out + j, sizeof(out), "%s,", flow->ssh_ssl.client_info);
-    } else {
-        j += snprintf(out + j, sizeof(out), ",");
-    }
-    if (flow->ssh_ssl.server_info[0] != '\0') {
-        j += snprintf(out + j, sizeof(out), "%s,", flow->ssh_ssl.server_info);
-    } else {
-        j += snprintf(out + j, sizeof(out), ",");
-    }
-    if (flow->bittorent_hash[0] != '\0') {
-        j += snprintf(out + j, sizeof(out), "%s", flow->bittorent_hash);
-    }
-    if (j > sizeof(out) - 1) {
-        fprintf(stdout, "strcat error, no enough buffer\n");
-    } else {
-        fprintf(stdout, "%s", out);
-    }
+//    j += snprintf(out + j, sizeof(out), "%s,%u,%s,%u,%u,%u,%llu,%llu,%u,%llu,", flow->src_name, htons(flow->src_port),
+//                  flow->dst_name,
+//                  htons(flow->dst_port),
+//                  flow->src2dst_packets, flow->dst2src_packets, flow->src2dst_bytes, flow->dst2src_bytes,
+//                  flow->src2dst_packets + flow->dst2src_packets, flow->src2dst_bytes + flow->dst2src_bytes);
+
+//    if (flow->host_server_name[0] != '\0') {
+//        j += snprintf(out + j, sizeof(out), "%s,", flow->host_server_name);
+//    } else {
+//        j += snprintf(out + j, sizeof(out), ",");
+//    }
+//    if (flow->info[0] != '\0') {
+//        j += snprintf(out + j, sizeof(out), "%s,", flow->info);
+//    } else {
+//        j += snprintf(out + j, sizeof(out), ",");
+//    }
+
+//    if (flow->ssh_ssl.client_info[0] != '\0') {
+//        j += snprintf(out + j, sizeof(out), "%s,", flow->ssh_ssl.client_info);
+//    } else {
+//        j += snprintf(out + j, sizeof(out), ",");
+//    }
+//    if (flow->ssh_ssl.server_info[0] != '\0') {
+//        j += snprintf(out + j, sizeof(out), "%s,", flow->ssh_ssl.server_info);
+//    } else {
+//        j += snprintf(out + j, sizeof(out), ",");
+//    }
+//    if (flow->bittorent_hash[0] != '\0') {
+//        j += snprintf(out + j, sizeof(out), "%s", flow->bittorent_hash);
+//    }
+//    if (j > sizeof(out) - 1) {
+//        fprintf(stdout, "strcat error, no enough buffer\n");
+//    } else {
+//        fprintf(stdout, "%s\n", out);
+//    }
 }
 
-void handlePacket(const struct pcap_pkthdr *header, const u_char *packet){
+void handlePacket(const struct pcap_pkthdr *header, const u_char *packet,struct result * result){
     struct ndpi_proto p;
     uint8_t *packet_checked = malloc(header->caplen);
     memcpy(packet_checked, packet, header->caplen);
     p = ndpi_workflow_process_packet(reader.workflow, header, packet_checked);
-
-    if (!program_start.tv_sec) program_start.tv_sec = header->ts.tv_sec, program_start.tv_usec = header->ts.tv_usec;
-    if (!pcap_start.tv_sec) pcap_start.tv_sec = header->ts.tv_sec, pcap_start.tv_usec = header->ts.tv_usec;
-    pcap_end.tv_sec = header->ts.tv_sec, pcap_end.tv_usec = header->ts.tv_usec;
 
     if (reader.last_idle_scan_time + IDLE_SCAN_PERIOD < reader.workflow->last_time) {
         /* scan for idle flows */
@@ -240,7 +238,7 @@ void handlePacket(const struct pcap_pkthdr *header, const u_char *packet){
         /* remove idle flows (unfortunately we cannot do this inline) */
         while (reader.num_idle_flows > 0) {
             /* search and delete the idle flow from the "ndpi_flow_root" (see struct reader thread) - here flows are the node of a b-tree */
-            printFlow(reader.idle_flows[--reader.num_idle_flows], 1);
+            printFlow(reader.idle_flows[--reader.num_idle_flows] ,result);
             ndpi_tdelete(reader.idle_flows[reader.num_idle_flows],
                          &reader.workflow->ndpi_flows_root[reader.idle_scan_idx],
                          ndpi_workflow_node_cmp);

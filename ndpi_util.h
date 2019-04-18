@@ -39,7 +39,7 @@ extern "C"
 
 #define MAX_NUM_READER_THREADS     16
 #define IDLE_SCAN_PERIOD           10 /* msec (use TICK_RESOLUTION = 1000) */
-#define MAX_IDLE_TIME           1000
+#define MAX_IDLE_TIME           10000
 #define IDLE_SCAN_BUDGET         1024
 #define NUM_ROOTS                 512
 #define MAX_EXTRA_PACKETS_TO_CHECK  7
@@ -80,7 +80,7 @@ typedef struct ndpi_flow_info {
 
   // result only, not used for flow identification
   ndpi_protocol detected_protocol;
-
+  char protocol_name[64];
   char info[96];
   char host_server_name[256];
   char bittorent_hash[41];
